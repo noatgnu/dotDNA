@@ -1,11 +1,8 @@
 import struct
 import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import Element
-from csv import DictWriter
 
-file_path = "../tests/GAS1 primer design.dna"
-output_path = "../test.csv"
-column = ["Name", "Position", "Direction", "Temperature", "Sequence"]
+
 
 
 class Primer:
@@ -49,7 +46,7 @@ class SnapGene:
         self.meta = {}
 
     def parse(self):
-        with open(file_path, "rb") as infile:
+        with open(self.file_path, "rb") as infile:
             if infile.read(1) == b"\t":
                 document_length = struct.unpack(">I", infile.read(4))
                 if document_length[0] == 14:
@@ -151,96 +148,3 @@ class SnapGene:
         self.seq_properties["seq"] = struct.unpack("%ss" % self.seq_properties["length"],
                                                    infile.read(self.seq_properties["length"]))
 
-
-if __name__=="__main__":
-    primers = []
-    features = {}
-    meta_dict = {}
-    seq_properties = {}
-    notes_content = {}
-    with open(file_path, "rb") as infile:
-        if infile.read(1) == b"\t":
-            document_length = struct.unpack(">I", infile.read(4))
-            if document_length[0] == 14:
-                title = struct.unpack("8s", infile.read(8))
-                if title[0] == b"SnapGene":
-                    is_dna = False
-                    if struct.unpack(">H", infile.read(2))[0] == 1:
-                        is_dna = True
-                    meta_dict = dict(
-                        is_dna=is_dna,
-                        export_version=struct.unpack(">H", infile.read(2))[0],
-                        import_version=struct.unpack(">H", infile.read(2))[0]
-                    )
-                    print(meta_dict)
-                    while True:
-                        block = infile.read(1)
-                        if block == b"":
-                            break
-                        block_size = struct.unpack(">I", infile.read(4))
-                        print(block, ord(block))
-                        if ord(block) == 0:
-                            p = struct.unpack(">b", infile.read(1))
-                            print(p)
-                            if p[0] & 0x01:
-                                seq_properties["topology"] = "circular"
-                            else:
-                                seq_properties["topology"] = "linear"
-                            if p[0] & 0x02 > 0:
-                                seq_properties["stranded"] = "double"
-                            else:
-                                seq_properties["stranded"] = "single"
-                            seq_properties["a_methylated"] = p[0] & 0x04 > 0
-                            seq_properties["c_methylated"] = p[0] & 0x08 > 0
-                            seq_properties["ki_methylated"] = p[0] & 0x10 > 0
-                            seq_properties["length"] = block_size[0] - 1
-                            seq_properties["seq"] = struct.unpack("%ss" % seq_properties["length"], infile.read(seq_properties["length"]))
-                        elif ord(block) == 6:
-                            xml_content = infile.read(block_size[0])
-                            root = ET.fromstring(struct.unpack("%ss" % len(xml_content), xml_content)[0])
-                            for i in root:
-                                notes_content[i.tag] = i.text
-                        elif ord(block) == 10:
-                            xml_content = infile.read(block_size[0])
-                            root = ET.fromstring(struct.unpack("%ss" % len(xml_content), xml_content)[0])
-                            for f in root:
-                                feature = dict(f.attrib)
-                                feature["data"] = {"Q": {}}
-                                if f.tag not in features:
-                                    features[f.tag] = []
-                                for i in f:
-                                    if i.tag == "Q":
-                                        for v in i:
-                                            for a in v.attrib:
-                                                feature["data"]["Q"][i.attrib["name"]] = v.attrib[a]
-                                    else:
-                                        feature["data"][i.tag] = i.attrib
-                                features[f.tag].append(feature)
-
-                        elif ord(block) == 5:
-                            xml_content = infile.read(block_size[0])
-                            root = ET.fromstring(struct.unpack("%ss" % len(xml_content), xml_content)[0])
-                            for primer in root:
-                                if primer.tag == "Primer":
-                                    pri = Primer()
-                                    pri.from_element(primer)
-                                    primers.append(pri)
-                                # if primer.tag == "Primer":
-                                #     print(primer)
-                                #     pr = dict(primer.attrib)
-                                #     pr["data"] = {"Sites": []}
-                                #     for b in primer:
-                                #         site = dict(b.attrib)
-                                #         site["components"] = []
-                                #         for c in b:
-                                #             site["components"].append(c.attrib)
-                                #         pr["data"]["Sites"].append(site)
-                                #    primers.append(pr)
-                        else:
-                            infile.read(block_size[0])
-                            pass
-    with open(output_path, "wt", newline="") as output:
-        w = DictWriter(output, fieldnames=column)
-        w.writeheader()
-        for p in primers:
-            w.writerow(p.to_dict())
