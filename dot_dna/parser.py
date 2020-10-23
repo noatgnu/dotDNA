@@ -1,39 +1,7 @@
 import struct
 import xml.etree.ElementTree as ET
-from xml.etree.ElementTree import Element
 
-
-
-
-class Primer:
-    def __init__(self):
-        self.strand = "0"
-        self.start = 0
-        self.stop = 0
-        self.seq = ""
-        self.temperature = 0
-        self.name = ""
-
-    def from_element(self, element: Element):
-        if element.tag == "Primer":
-            for k in element.attrib:
-                if k == "name":
-                    self.name = element.attrib[k]
-                elif k == "sequence":
-                    self.seq = element.attrib[k]
-            for bindingSite in element:
-                if "simplified" not in bindingSite.attrib:
-                    location = bindingSite.attrib["location"].split("-")
-                    self.start = int(location[0])
-                    self.stop = int(location[1])
-                self.temperature = int(bindingSite.attrib["meltingTemperature"])
-                self.strand = bindingSite.attrib["boundStrand"]
-
-    def to_dict(self):
-        return {"Position": "{}-{}".format(self.start, self.stop), "Name": self.name, "Direction": "Forward" if self.strand == "0" else "Reverse", "Sequence": self.seq, "Temperature": self.temperature}
-
-    def __repr__(self):
-        return "{} {} {}-{} T:{}".format(self.strand, self.name, self.start, self.stop, self.temperature)
+from dot_dna.primer import Primer
 
 
 class SnapGene:
@@ -44,6 +12,7 @@ class SnapGene:
         self.notes_content = {}
         self.seq_properties = {}
         self.meta = {}
+        self.translation = ""
 
     def parse(self):
         with open(self.file_path, "rb") as infile:
@@ -117,6 +86,8 @@ class SnapGene:
                     for v in i:
                         for a in v.attrib:
                             feature["data"]["Q"][i.attrib["name"]] = v.attrib[a]
+                            if i.attrib["name"] == "translation":
+                                self.translation = v.attrib[a][:]
                 else:
                     feature["data"][i.tag] = i.attrib
             self.features[f.tag].append(feature)
@@ -147,4 +118,11 @@ class SnapGene:
         self.seq_properties["length"] = block_size[0] - 1
         self.seq_properties["seq"] = struct.unpack("%ss" % self.seq_properties["length"],
                                                    infile.read(self.seq_properties["length"]))
+
+    def get_translated(self, position, strand=0):
+        if strand == 1:
+            position = self.seq_properties["length"] - position
+        aa_position = int((position - position % 3)/3)
+        return self.translation[aa_position], aa_position+1
+
 
