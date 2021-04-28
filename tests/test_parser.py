@@ -13,6 +13,7 @@ class TestSnapGene(TestCase):
         self.snap.parse()
 
     def test_parse_primers(self):
+        print(self.snap.primers)
         if not self.snap.primers:
             self.fail()
 
